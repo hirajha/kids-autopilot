@@ -26,7 +26,7 @@ async function generateScript() {
   console.log('🤖  Step 1: Generating script with Gemini...');
   const topic = process.env.VIDEO_TOPIC_SEED || TOPIC_POOL[Math.floor(Math.random() * TOPIC_POOL.length)];
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   const result = await model.generateContent(
     `You are a scriptwriter for a YouTube kids educational channel.
 Write a fun, engaging 90-second narration script for children aged 4-8 about: "${topic}"

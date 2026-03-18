@@ -13,7 +13,7 @@
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^16.4.5",
     "googleapis": "^140.0.0",
-    "open": "^10.1.0"
+    "open": "^8.4.2"
   },
   "engines": {
     "node": ">=20"
