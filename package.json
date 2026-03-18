@@ -1,0 +1,20 @@
+{
+  "name": "kids-autopilot",
+  "version": "2.0.0",
+  "description": "AI kids YouTube channel — runs 24/7 on GitHub Actions",
+  "main": "pipeline/pipeline.js",
+  "scripts": {
+    "start":         "node pipeline/pipeline.js",
+    "get-token":     "node scripts/get-refresh-token.js",
+    "test-pipeline": "node pipeline/pipeline.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "googleapis":        "^140.0.0",
+    "dotenv":            "^16.4.5",
+    "open":              "^10.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
