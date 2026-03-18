@@ -67,7 +67,7 @@ Add these 4 secrets:
 
 | Secret Name              | Value                        |
 |--------------------------|------------------------------|
-| `ANTHROPIC_API_KEY`      | Your Claude API key          |
+| `GEMINI_API_KEY | Your Gemini API key (from aistudio.google.com)          |
 | `YOUTUBE_CLIENT_ID`      | From Google Cloud Console    |
 | `YOUTUBE_CLIENT_SECRET`  | From Google Cloud Console    |
 | `YOUTUBE_REFRESH_TOKEN`  | Generated in Step 4          |
