@@ -231,20 +231,75 @@ async function addBackgroundMusic(rawVideo) {
 }
 
 // ─── Step 7: Upload ───────────────────────────────────────────────────────────
-async function upload(finalVideo, videoTitle, theme) {
+async function upload(finalVideo, videoTitle, theme, scenes) {
   console.log('Step 7: Uploading to YouTube...');
+  
+  // Generate SEO-friendly title
+  const seoTitle = videoTitle
+    .replace('🌟 Kids Story', '| Bedtime Story for Kids')
+    .replace('A funny', 'The Funny')
+    .replace('A tiny', 'The Tiny')
+    .replace('A brave', 'The Brave')
+    .replace('A silly', 'The Silly')
+    .replace('A group of', 'The')
+    .replace('A princess', 'The Princess')
+    .replace('A friendly', 'The Friendly')
+    .replace('A little', 'The Little')
+    .replace('A family of', 'The')
+    .replace('A young', 'The Young')
+    .replace('A space', 'The Space')
+    .replace('A magic', 'The Magic')
+    .substring(0, 90);
+
+  // Generate timestamps from scenes
+  let timestamps = '\n⏱️ CHAPTERS:\n0:00 - Introduction\n';
+  let currentTime = 30;
+  for (let i = 0; i < Math.min(scenes.length, 10); i++) {
+    const mins = Math.floor(currentTime / 60);
+    const secs = String(currentTime % 60).padStart(2, '0');
+    timestamps += `${mins}:${secs} - ${scenes[i].title}\n`;
+    currentTime += 45;
+  }
+
   const description = [
-    `🌟 ${videoTitle}`,
-    '', `Join us for an amazing adventure: ${theme}`,
-    '', '🎉 Fun cartoon story for kids aged 3-8!',
-    '✅ New stories every single day — Subscribe so you never miss one!',
-    '👍 Like and share with your friends!',
-    '', '#KidsStories #CartoonForKids #BedtimeStories #KidsEntertainment #FunForKids #KidsCartoon #ChildrensStories',
+    `🌟 ${seoTitle}`,
+    '',
+    `📖 Tonight's story: ${theme}`,
+    '',
+    '🎯 Perfect for:',
+    '• Bedtime stories for toddlers',
+    '• Kids aged 2-8 years old',
+    '• Learning English through stories',
+    '• Quiet time and relaxation',
+    '',
+    timestamps,
+    '',
+    '✅ NEW stories posted EVERY DAY — Subscribe & hit the 🔔 bell!',
+    '👍 If your child enjoyed this, please LIKE and SHARE!',
+    '',
+    '🌙 About Limitless Bedtime Stories:',
+    'We create magical, fun and safe bedtime stories for children around the world. Our stories help kids develop imagination, learn new words, and fall asleep peacefully.',
+    '',
+    '─────────────────────────────',
+    '#BedtimeStories #KidsStories #StoriesForKids #CartoonForKids #ChildrensStories #FunnyStoriesForKids #KidsCartoon #BedtimeStoriesForToddlers #KidsEntertainment #AnimatedStories #StoryTime #KidsBedtime #ToddlerStories #FairyTales #KidsYouTube',
   ].join('\n');
+
+  const tags = [
+    'bedtime stories', 'kids stories', 'stories for kids', 'cartoon for kids',
+    'childrens stories', 'funny stories for kids', 'kids cartoon', 'story time',
+    'bedtime stories for toddlers', 'kids entertainment', 'animated stories',
+    'fairy tales', 'kids youtube', 'toddler stories', 'kids bedtime',
+    'english stories for kids', 'moral stories', 'adventure stories for kids',
+    theme.split(' ').slice(0,3).join(' ')
+  ];
+
   await uploadToYouTube({
-    videoPath: finalVideo, title: videoTitle, description,
-    tags: ['kids stories','cartoon for kids','bedtime stories','kids entertainment','funny kids','childrens cartoon'],
-    categoryId: '1', privacyStatus: 'public',
+    videoPath: finalVideo,
+    title: seoTitle,
+    description,
+    tags,
+    categoryId: '1',
+    privacyStatus: 'public',
   });
   console.log('✅ Uploaded!');
 }
@@ -260,7 +315,7 @@ async function upload(finalVideo, videoTitle, theme) {
     const scenePaths = await buildSceneVideos(scenes, imagePaths, audioPaths);
     const rawVideo   = await concatenateWithFades(scenePaths);
     const finalVideo = await addBackgroundMusic(rawVideo);
-    await upload(finalVideo, videoTitle, theme);
+    await upload(finalVideo, videoTitle, theme, scenes);
     console.log(`\n✅ Done in ${((Date.now()-start)/60000).toFixed(1)} minutes!\n`);
   } catch (err) {
     console.error('\n❌ Pipeline failed:', err.message, '\n', err.stack);
