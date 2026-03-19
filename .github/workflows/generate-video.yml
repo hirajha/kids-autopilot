@@ -68,3 +68,4 @@ jobs:
             output/
             *.log
           retention-days: 3
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
