@@ -120,15 +120,14 @@ async function generateImages(scenes) {
         })
       });
       const data = await resp.json();
-      if (!data.artifacts || !data.artifacts[0]) throw new Error(JSON.stringify(data));
-      const imgBuffer = Buffer.from(data.artifacts[0].base64, 'base64');
-      fs.writeFileSync(imgPath, imgBuffer);
+      if (!data.artifacts || !data.artifacts[0]) throw new Error(JSON.stringify(data).substring(0,200));
+      fs.writeFileSync(imgPath, Buffer.from(data.artifacts[0].base64, 'base64'));
       imagePaths.push(imgPath);
       await new Promise(r => setTimeout(r, 500));
     } catch(err) {
       console.warn('\n  Image ' + i + ' failed: ' + err.message.substring(0,100));
       const colours = ['4ECDC4','FF6B6B','45B7D1','96CEB4','FFEAA7','DDA0DD','98FB98'];
-      spawnSync('ffmpeg',['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1280x720','-frames:v','1',imgPath],{stdio:'pipe'});
+      spawnSync('ffmpeg',['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1024x1024','-frames:v','1',imgPath],{stdio:'pipe'});
       imagePaths.push(imgPath);
     }
   }

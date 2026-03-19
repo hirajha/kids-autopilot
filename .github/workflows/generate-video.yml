@@ -4,21 +4,17 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 8 * * *'
-    - cron: '0 12 * * *'
     - cron: '0 18 * * *'
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
-      - name: Check key
-        run: echo "Key length is ${#GROQ_API_KEY}"
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          node-version: '24'
       - name: Install deps
         run: |
           sudo apt-get update -qq && sudo apt-get install -y ffmpeg
