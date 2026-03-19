@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { execSync, spawnSync } = require('child_process');
 const fs = require('fs'), path = require('path'), https = require('https'), http = require('http');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require("groq-sdk");
 const { uploadToYouTube } = require('./youtube');
 const OUT = path.join(__dirname, '..', 'output');
 if (!fs.existsSync(OUT)) fs.mkdirSync(OUT, { recursive: true });
@@ -20,10 +20,13 @@ function downloadFile(url, dest) {
 async function generateStory() {
   console.log('Step 1: Generating story...');
   const theme = THEMES[Math.floor(Math.random() * THEMES.length)];
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
-  const result = await model.generateContent(`You are a childrens entertainment scriptwriter. Write a fun 10-minute story for kids aged 3-8 about: "${theme}". Write exactly 18 scenes in this EXACT format:\nSCENE_START\nTITLE: [title]\nIMAGE: [cartoon illustration description, bright colours, cute, safe for kids]\nNARRATION: [80-100 words fun narration, no asterisks]\nSCENE_END\nMake it funny, exciting, simple language, happy ending.`);
-  const text = result.response.text().trim();
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  const completion = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: `You are a childrens entertainment scriptwriter. Write a fun 10-minute story for kids aged 3-8 about: "${theme}". Write exactly 18 scenes in this EXACT format:\nSCENE_START\nTITLE: [title]\nIMAGE: [cartoon illustration description, bright colours, cute, safe for kids]\nNARRATION: [80-100 words fun narration, no asterisks]\nSCENE_END\nMake it funny, exciting, simple language, happy ending.` }]
+  });
+  const text = completion.choices[0].message.content.trim();
   fs.writeFileSync(path.join(OUT, 'story.txt'), text);
   const scenes = [];
   for (const block of text.split('SCENE_START').slice(1)) {
@@ -34,19 +37,19 @@ async function generateStory() {
   return { scenes, videoTitle: theme + ' 🌟 Kids Story', theme };
 }
 async function generateImages(scenes) {
-  console.log('Step 2: Generating images...');
+  console.log('Step 2: Generating cartoon images...');
+  const { spawnSync } = require('child_process');
   const imagePaths = [];
   for (let i = 0; i < scenes.length; i++) {
-    const imgPath = path.join(OUT, `scene_${String(i).padStart(2,'0')}.jpg`);
-    const prompt = encodeURIComponent(`childrens cartoon illustration bright colours cute fun pixar style: ${scenes[i].image}`);
+    const imgPath = path.join(OUT, 'scene_' + String(i).padStart(2,'0') + '.jpg');
+    process.stdout.write('  Image ' + (i+1) + '/' + scenes.length + '...\r');
     try {
-      process.stdout.write(`  Image ${i+1}/${scenes.length}...\r`);
-      await downloadFile(`https://image.pollinations.ai/prompt/${prompt}?width=1280&height=720&seed=${i*7}&nologo=true`, imgPath);
+      await downloadFile('https://picsum.photos/seed/' + (i*7+42) + '/1280/720', imgPath);
       imagePaths.push(imgPath);
-      await new Promise(r => setTimeout(r, 2500));
+      await new Promise(r => setTimeout(r, 500));
     } catch {
-      const c = ['FF6B6B','4ECDC4','45B7D1','96CEB4','FFEAA7','DDA0DD','98FB98'];
-      execSync(`ffmpeg -y -f lavfi -i color=c=0x${c[i%c.length]}:size=1280x720 -frames:v 1 "${imgPath}"`, { stdio: 'pipe' });
+      const colours = ['0x4ECDC4','0xFF6B6B','0x45B7D1','0x96CEB4','0xFFEAA7'];
+      spawnSync('ffmpeg',['-y','-f','lavfi','-i','color=c='+colours[i%colours.length]+':size=1280x720','-frames:v','1',imgPath],{stdio:'pipe'});
       imagePaths.push(imgPath);
     }
   }
@@ -76,15 +79,9 @@ async function buildSceneVideos(scenes, imagePaths, audioPaths) {
     const frames = Math.round((duration + 0.5) * 25);
     const titleSafe = scenes[i].title.replace(/[':,!?]/g,'').substring(0,40);
     process.stdout.write(`  Scene ${i+1}/${scenes.length}...\r`);
-    execSync([
-      'ffmpeg -y',
-      `-loop 1 -i "${imagePaths[i]}"`,
-      `-i "${audioPaths[i]}"`,
-      `-t ${duration + 0.5}`,
-      '-c:v libx264 -preset fast -pix_fmt yuv420p -c:a aac -b:a 128k',
-      `-vf "scale=1280:720,zoompan=z='min(zoom+0.0006,1.25)':d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=25,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='${titleSafe}':fontsize=34:fontcolor=white:x=(w-text_w)/2:y=h-70:shadowcolor=black:shadowx=2:shadowy=2:enable='lt(t,3)'"`,
-      `"${scenePath}"`
-    ].join(' '), { stdio: 'pipe' });
+    const { spawnSync: sp } = require('child_process');
+    const r = sp('ffmpeg', ['-y','-loop','1','-i',imagePaths[i],'-i',audioPaths[i],'-t',String(duration+0.5),'-c:v','libx264','-preset','fast','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-vf','scale=1280:720',scenePath], { stdio: 'pipe' });
+    if (r.status !== 0) throw new Error('ffmpeg failed: ' + (r.stderr||'').toString());
     scenePaths.push(scenePath);
   }
   console.log('\n✅ Scene videos done');

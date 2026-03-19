@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^16.4.5",
     "googleapis": "^140.0.0",
+    "groq-sdk": "^1.1.1",
     "open": "^8.4.2"
   },
   "engines": {
