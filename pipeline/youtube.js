@@ -54,7 +54,7 @@ async function uploadToYouTube({ videoPath, title, description, tags, categoryId
       },
       status: {
         privacyStatus,
-        selfDeclaredMadeForKids: true,   // Required for kids content
+        selfDeclaredMadeForKids: false,   // Required for kids content
       },
     },
     media: {

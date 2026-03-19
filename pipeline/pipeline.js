@@ -96,28 +96,41 @@ Rules: super funny and exciting, simple words kids love, full of surprises, happ
 
 // ─── Step 2: Images (Pollinations with PNG fallback) ─────────────────────────
 async function generateImages(scenes) {
-  console.log('Step 2: Generating cartoon images...');
+  console.log('Step 2: Generating cartoon images with Stability AI...');
   const imagePaths = [];
   for (let i = 0; i < scenes.length; i++) {
-    const imgPath = path.join(OUT, `scene_${String(i).padStart(2,'0')}.png`);
-    process.stdout.write(`  Image ${i+1}/${scenes.length}...\r`);
-    let success = false;
-
-    // Try Pollinations with PNG format
+    const imgPath = path.join(OUT, 'scene_' + String(i).padStart(2,'0') + '.png');
+    process.stdout.write('  Image ' + (i+1) + '/' + scenes.length + '...\r');
     try {
-      const prompt = encodeURIComponent('bright colorful childrens cartoon illustration, pixar disney style, cute characters, safe for kids, vibrant: ' + scenes[i].image.substring(0, 200));
-      await downloadFile(`https://picsum.photos/seed/${i*13+42}/1280/720`, imgPath);
-      if (isValidImage(imgPath)) success = true;
-      else fs.unlinkSync(imgPath);
-    } catch { /* fallback */ }
-
-    // Fallback: colour background with scene number
-    if (!success) {
-      makeColourBg(imgPath, i);
+      const prompt = 'childrens cartoon illustration, bright vibrant colours, pixar disney style, cute friendly characters, safe for kids, high quality: ' + scenes[i].image.substring(0, 300);
+      const resp = await fetch('https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + process.env.STABILITY_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          text_prompts: [{ text: prompt, weight: 1 }, { text: 'ugly, scary, dark, violent, adult content', weight: -1 }],
+          cfg_scale: 7,
+          height: 1024,
+          width: 1024,
+          samples: 1,
+          steps: 20,
+        })
+      });
+      const data = await resp.json();
+      if (!data.artifacts || !data.artifacts[0]) throw new Error(JSON.stringify(data));
+      const imgBuffer = Buffer.from(data.artifacts[0].base64, 'base64');
+      fs.writeFileSync(imgPath, imgBuffer);
+      imagePaths.push(imgPath);
+      await new Promise(r => setTimeout(r, 500));
+    } catch(err) {
+      console.warn('\n  Image ' + i + ' failed: ' + err.message.substring(0,100));
+      const colours = ['4ECDC4','FF6B6B','45B7D1','96CEB4','FFEAA7','DDA0DD','98FB98'];
+      spawnSync('ffmpeg',['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1280x720','-frames:v','1',imgPath],{stdio:'pipe'});
+      imagePaths.push(imgPath);
     }
-
-    imagePaths.push(imgPath);
-    await new Promise(r => setTimeout(r, 3000));
   }
   console.log('\n✅ Images done');
   return imagePaths;
