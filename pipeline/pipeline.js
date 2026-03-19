@@ -74,11 +74,11 @@ async function generateStory() {
     max_tokens: 6000,
     messages: [{ role: 'user', content: `You are an EXCITING children's TV show scriptwriter. Write a fun 10-minute story for kids aged 3-8 about: "${theme}".
 
-Write exactly 18 scenes. Use this EXACT format:
+Write exactly 20 scenes. Use this EXACT format:
 SCENE_START
 TITLE: [exciting scene title]
 IMAGE: [detailed cartoon scene description: characters, setting, colours, action happening, art style: bright pixar cartoon]
-NARRATION: [80-100 words of ENERGETIC fun narration. Use CAPS for exciting words. Use ... for dramatic pauses. Make it sound like an excited TV presenter talking to kids. Include sound effects like WHOOSH, BOOM, SPLASH in the story]
+NARRATION: [150-180 words of ENERGETIC fun narration. Use CAPS for exciting words. Use ... for dramatic pauses. Make it sound like an excited TV presenter talking to kids. Include sound effects like WHOOSH, BOOM, SPLASH in the story]
 SCENE_END
 
 Rules: super funny and exciting, simple words kids love, full of surprises, happy ending, no asterisks or markdown.` }]
