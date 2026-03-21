@@ -28,3 +28,16 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: node pipeline/pipeline.js
+
+      - name: Restore image cache
+        uses: actions/cache@v4
+        with:
+          path: image_cache/
+          key: image-cache-${{ runner.os }}
+          restore-keys: image-cache-
+
+      - name: Save image cache
+        uses: actions/cache@v4
+        with:
+          path: image_cache/
+          key: image-cache-${{ runner.os }}
