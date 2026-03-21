@@ -61,7 +61,7 @@ function isValidImage(p) {
 
 function makeColourBg(p, i) {
   const colours = ['4ECDC4','FF6B6B','45B7D1','96CEB4','FFEAA7','DDA0DD','98FB98','F7DC6F','AED6F1','A9DFBF'];
-  spawnSync('ffmpeg', ['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1280x720:rate=25','-t','1','-frames:v','1',p], { stdio: 'pipe' });
+  spawnSync('ffmpeg', ['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1920x1080:rate=25','-t','1','-frames:v','1',p], { stdio: 'pipe' });
 }
 
 // ─── Step 1: Story ────────────────────────────────────────────────────────────
@@ -113,10 +113,10 @@ async function generateImages(scenes) {
         body: JSON.stringify({
           text_prompts: [{ text: prompt, weight: 1 }, { text: 'ugly, scary, dark, violent, adult content', weight: -1 }],
           cfg_scale: 7,
-          height: 1024,
-          width: 1024,
+          height: 768,
+          width: 1344,
           samples: 1,
-          steps: 20,
+          steps: 30,
         })
       });
       const data = await resp.json();
@@ -127,7 +127,7 @@ async function generateImages(scenes) {
     } catch(err) {
       console.warn('\n  Image ' + i + ' failed: ' + err.message.substring(0,100));
       const colours = ['4ECDC4','FF6B6B','45B7D1','96CEB4','FFEAA7','DDA0DD','98FB98'];
-      spawnSync('ffmpeg',['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1024x1024','-frames:v','1',imgPath],{stdio:'pipe'});
+      spawnSync('ffmpeg',['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1920x1080','-frames:v','1',imgPath],{stdio:'pipe'});
       imagePaths.push(imgPath);
     }
   }
@@ -186,14 +186,14 @@ async function buildSceneVideos(scenes, imagePaths, audioPaths) {
       '-t', String(duration),
       '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '320k',
-      '-vf', `scale=1280:720,zoompan=z=${zoomExpr}:d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=25`,
+      '-vf', `scale=1920:1080,zoompan=z=${zoomExpr}:d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=25`,
       '-r', '25',
       scenePath
     ], { stdio: 'pipe' });
 
     if (r.status !== 0) {
       // Fallback without zoom
-      spawnSync('ffmpeg', ['-y','-loop','1','-i',imagePaths[i],'-i',audioPaths[i],'-t',String(duration),'-c:v','libx264','-preset','fast','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-vf','scale=1280:720','-r','25',scenePath], { stdio: 'pipe' });
+      spawnSync('ffmpeg', ['-y','-loop','1','-i',imagePaths[i],'-i',audioPaths[i],'-t',String(duration),'-c:v','libx264','-preset','fast','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-vf','scale=1920:1080','-r','25',scenePath], { stdio: 'pipe' });
     }
     scenePaths.push(scenePath);
   }
