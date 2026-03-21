@@ -10,7 +10,7 @@ if (!fs.existsSync(OUT)) fs.mkdirSync(OUT, { recursive: true });
 const THEMES = [
   'A funny dragon who is afraid of fire has hilarious adventures with his animal friends',
   'A tiny superhero mouse saves the city from a giant cheese thief villain',
-  'A magical school bus travels to candy land where everything is made of sweets',
+  'A magical flying carpet travels to candy land where everything is made of sweets',
   'A brave little robot who wants to make friends goes on a journey',
   'A silly wizard who always gets his spells mixed up in the most hilarious ways',
   'A group of animal friends go on a treasure hunt in the magical jungle',
@@ -67,7 +67,23 @@ function makeColourBg(p, i) {
 // ─── Step 1: Story ────────────────────────────────────────────────────────────
 async function generateStory() {
   console.log('Step 1: Generating story...');
-  const theme = THEMES[Math.floor(Math.random() * THEMES.length)];
+  
+  // Load story history to avoid duplicates
+  const historyFile = path.join(__dirname, '..', 'story_history.json');
+  let usedThemes = [];
+  if (fs.existsSync(historyFile)) {
+    try { usedThemes = JSON.parse(fs.readFileSync(historyFile, 'utf8')); } catch {}
+  }
+  
+  // Pick theme not used in last 30 stories
+  const recentThemes = usedThemes.slice(-30);
+  const availableThemes = THEMES.filter(t => !recentThemes.includes(t));
+  const themePool = availableThemes.length > 0 ? availableThemes : THEMES;
+  const theme = themePool[Math.floor(Math.random() * themePool.length)];
+  
+  // Save to history
+  usedThemes.push(theme);
+  fs.writeFileSync(historyFile, JSON.stringify(usedThemes.slice(-100)));
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const completion = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
@@ -339,12 +355,10 @@ async function upload(finalVideo, videoTitle, theme, scenes) {
   ].join('\n');
 
   const tags = [
-    'bedtime stories', 'kids stories', 'stories for kids', 'cartoon for kids',
-    'childrens stories', 'funny stories for kids', 'kids cartoon', 'story time',
-    'bedtime stories for toddlers', 'kids entertainment', 'animated stories',
-    'fairy tales', 'kids youtube', 'toddler stories', 'kids bedtime',
-    'english stories for kids', 'moral stories', 'adventure stories for kids',
-    theme.split(' ').slice(0,3).join(' ')
+    'bedtime stories', 'stories for kids', 'story time',
+    'animated stories', 'fairy tales', 'relaxing stories',
+    'english stories', 'adventure stories', 'limitless bedtime stories',
+    theme.split(' ').slice(0,4).join(' ')
   ];
 
   await uploadToYouTube({
