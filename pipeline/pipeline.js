@@ -147,9 +147,17 @@ async function generateVoiceovers(scenes) {
       '--rate', '+8%',
       '--pitch', '+15Hz',
       '--text', scenes[i].narration,
-      '--write-media', audioPath
+      '--write-media', audioPath, '--write-subtitles', '/dev/null'
     ], { encoding: 'utf8' });
     if (r.status !== 0) throw new Error('edge-tts failed scene ' + i);
+    // Enhance audio quality - normalize volume and boost clarity
+    const enhancedPath = audioPath.replace('.mp3', '_enhanced.mp3');
+    spawnSync('ffmpeg', [
+      '-y', '-i', audioPath,
+      '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,equalizer=f=3000:width_type=o:width=2:g=1.5',
+      '-b:a', '320k', enhancedPath
+    ], { stdio: 'pipe' });
+    if (fs.existsSync(enhancedPath)) fs.renameSync(enhancedPath, audioPath);
     audioPaths.push(audioPath);
   }
   console.log('\n✅ Voiceovers done');
@@ -177,7 +185,7 @@ async function buildSceneVideos(scenes, imagePaths, audioPaths) {
       '-i', audioPaths[i],
       '-t', String(duration),
       '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '128k',
+      '-c:a', 'aac', '-b:a', '320k',
       '-vf', `scale=1280:720,zoompan=z=${zoomExpr}:d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=25`,
       '-r', '25',
       scenePath
@@ -219,7 +227,7 @@ async function addBackgroundMusic(rawVideo) {
       '-t', String(duration),
       '-filter_complex', `[1:a]volume=0.08,afade=t=in:st=0:d=3,afade=t=out:st=${duration-3}:d=3[music];[0:a][music]amix=inputs=2:duration=first[aout]`,
       '-map', '0:v', '-map', '[aout]',
-      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '320k',
       finalVideo
     ], { stdio: 'pipe' });
     if (r.status !== 0) fs.copyFileSync(rawVideo, finalVideo);
