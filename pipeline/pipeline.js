@@ -144,8 +144,8 @@ async function generateVoiceovers(scenes) {
     process.stdout.write(`  Audio ${i+1}/${scenes.length}...\r`);
     const r = spawnSync('edge-tts', [
       '--voice', 'en-US-MichelleNeural',
-      '--rate', '+15%',
-      '--pitch', '+10Hz',
+      '--rate', '+8%',
+      '--pitch', '+15Hz',
       '--text', scenes[i].narration,
       '--write-media', audioPath
     ], { encoding: 'utf8' });
