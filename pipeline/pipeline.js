@@ -197,32 +197,81 @@ async function generateImages(scenes) {
   return imagePaths;
 }
 
-// ─── Step 3: Voiceovers ───────────────────────────────────────────────────────
+// ─── Step 3: Voiceovers (Kokoro TTS primary, edge-tts fallback) ──────────────
 async function generateVoiceovers(scenes) {
   console.log('Step 3: Generating voiceovers...');
   const audioPaths = [];
+
+  // Try loading Kokoro TTS (ESM module, needs dynamic import)
+  let tts = null;
+  try {
+    const { KokoroTTS } = await import('kokoro-js');
+    console.log('  Loading Kokoro TTS model (first run downloads ~100MB)...');
+    tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
+      dtype: 'q8',
+      device: 'cpu',
+    });
+    console.log('  ✅ Kokoro TTS loaded — using af_heart voice (Grade A)');
+  } catch (err) {
+    console.log('  ⚠️ Kokoro TTS not available: ' + err.message.substring(0, 100));
+    console.log('  Falling back to edge-tts...');
+  }
+
   for (let i = 0; i < scenes.length; i++) {
     const audioPath = path.join(OUT, `audio_${String(i).padStart(2,'0')}.mp3`);
     process.stdout.write(`  Audio ${i+1}/${scenes.length}...\r`);
-    const r = spawnSync('edge-tts', [
-      '--voice', 'en-US-MichelleNeural',
-      '--rate', '+8%',
-      '--pitch', '+15Hz',
-      '--text', scenes[i].narration,
-      '--write-media', audioPath, '--write-subtitles', '/dev/null'
-    ], { encoding: 'utf8' });
-    if (r.status !== 0) throw new Error('edge-tts failed scene ' + i);
-    // Enhance audio quality - normalize volume and boost clarity
-    const enhancedPath = audioPath.replace('.mp3', '_enhanced.mp3');
-    spawnSync('ffmpeg', [
-      '-y', '-i', audioPath,
-      '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,equalizer=f=3000:width_type=o:width=2:g=1.5',
-      '-b:a', '320k', enhancedPath
-    ], { stdio: 'pipe' });
-    if (fs.existsSync(enhancedPath)) fs.renameSync(enhancedPath, audioPath);
+
+    let generated = false;
+
+    // Primary: Kokoro TTS (natural human voice)
+    if (tts) {
+      try {
+        const wavPath = audioPath.replace('.mp3', '_kokoro.wav');
+        const audio = await tts.generate(scenes[i].narration, {
+          voice: 'af_heart',  // top-rated natural female voice (Grade A)
+        });
+        audio.save(wavPath);
+
+        // Convert WAV to MP3 with loudness normalization
+        try {
+          execSync(`ffmpeg -y -i "${wavPath}" -af "loudnorm=I=-16:TP=-1.5:LRA=11,equalizer=f=3000:width_type=o:width=2:g=1.5" -b:a 320k "${audioPath}"`, { stdio: 'pipe' });
+        } catch {
+          // Try without loudnorm if it fails
+          execSync(`ffmpeg -y -i "${wavPath}" -b:a 320k "${audioPath}"`, { stdio: 'pipe' });
+        }
+
+        if (fs.existsSync(audioPath) && fs.statSync(audioPath).size > 1000) {
+          generated = true;
+          try { fs.unlinkSync(wavPath); } catch {} // cleanup WAV
+        }
+      } catch (err) {
+        console.log(`\n  ⚠️ Kokoro failed scene ${i}: ${err.message.substring(0, 80)}`);
+      }
+    }
+
+    // Fallback: edge-tts
+    if (!generated) {
+      const r = spawnSync('edge-tts', [
+        '--voice', 'en-US-MichelleNeural',
+        '--rate', '+8%',
+        '--pitch', '+15Hz',
+        '--text', scenes[i].narration,
+        '--write-media', audioPath, '--write-subtitles', '/dev/null'
+      ], { encoding: 'utf8' });
+      if (r.status !== 0) throw new Error('edge-tts failed scene ' + i);
+      // Enhance audio quality
+      const enhancedPath = audioPath.replace('.mp3', '_enhanced.mp3');
+      spawnSync('ffmpeg', [
+        '-y', '-i', audioPath,
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,equalizer=f=3000:width_type=o:width=2:g=1.5',
+        '-b:a', '320k', enhancedPath
+      ], { stdio: 'pipe' });
+      if (fs.existsSync(enhancedPath)) fs.renameSync(enhancedPath, audioPath);
+    }
+
     audioPaths.push(audioPath);
   }
-  console.log('\n✅ Voiceovers done');
+  console.log(`\n✅ Voiceovers done (${tts ? 'Kokoro TTS' : 'edge-tts'})`);
   return audioPaths;
 }
 
