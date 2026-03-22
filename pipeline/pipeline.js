@@ -64,31 +64,9 @@ function makeColourBg(p, i) {
   spawnSync('ffmpeg', ['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1920x1080:rate=25','-t','1','-frames:v','1',p], { stdio: 'pipe' });
 }
 
-// ─── Step 1: Story ────────────────────────────────────────────────────────────
-async function generateStory() {
-  console.log('Step 1: Generating story...');
-  
-  // Load story history to avoid duplicates
-  const historyFile = path.join(__dirname, '..', 'story_history.json');
-  let usedThemes = [];
-  if (fs.existsSync(historyFile)) {
-    try { usedThemes = JSON.parse(fs.readFileSync(historyFile, 'utf8')); } catch {}
-  }
-  
-  // Pick theme not used in last 30 stories
-  const recentThemes = usedThemes.slice(-30);
-  const availableThemes = THEMES.filter(t => !recentThemes.includes(t));
-  const themePool = availableThemes.length > 0 ? availableThemes : THEMES;
-  const theme = themePool[Math.floor(Math.random() * themePool.length)];
-  
-  // Save to history
-  usedThemes.push(theme);
-  fs.writeFileSync(historyFile, JSON.stringify(usedThemes.slice(-100)));
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  const completion = await groq.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
-    max_tokens: 6000,
-    messages: [{ role: 'user', content: `You are an EXCITING children's TV show scriptwriter. Write a fun 10-minute story for kids aged 3-8 about: "${theme}".
+// ─── Story prompt (shared across all providers) ──────────────────────────────
+function getStoryPrompt(theme) {
+  return `You are an EXCITING children's TV show scriptwriter. Write a fun 10-minute story for kids aged 3-8 about: "${theme}".
 
 Write exactly 20 scenes. Use this EXACT format:
 SCENE_START
@@ -97,16 +75,126 @@ IMAGE: [detailed cartoon scene description: characters, setting, colours, action
 NARRATION: [150-180 words of ENERGETIC fun narration. Use CAPS for exciting words. Use ... for dramatic pauses. Make it sound like an excited TV presenter talking to kids. Include sound effects like WHOOSH, BOOM, SPLASH in the story]
 SCENE_END
 
-Rules: super funny and exciting, simple words kids love, full of surprises, happy ending, no asterisks or markdown.` }]
-  });
-  const text = completion.choices[0].message.content.trim();
+Rules: super funny and exciting, simple words kids love, full of surprises, happy ending, no asterisks or markdown.`;
+}
+
+// ─── AI Provider Waterfall: Groq (free) → Gemini (free) → DeepSeek (cheap) ──
+async function callGroqStory(prompt) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const groq = new Groq({ apiKey });
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 6000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    return completion.choices[0].message.content.trim();
+  } catch (err) {
+    console.log('  Groq failed:', err.message.substring(0, 80));
+    return null;
+  }
+}
+
+async function callGeminiStory(prompt) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 6000, temperature: 0.8 },
+        }),
+      }
+    );
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    return text || null;
+  } catch (err) {
+    console.log('  Gemini failed:', err.message.substring(0, 80));
+    return null;
+  }
+}
+
+async function callDeepSeekStory(prompt) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 6000,
+        temperature: 0.8,
+      }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch (err) {
+    console.log('  DeepSeek failed:', err.message.substring(0, 80));
+    return null;
+  }
+}
+
+// ─── Step 1: Story (waterfall: Groq → Gemini → DeepSeek) ─────────────────────
+async function generateStory() {
+  console.log('Step 1: Generating story...');
+
+  // Load story history to avoid duplicates
+  const historyFile = path.join(__dirname, '..', 'story_history.json');
+  let usedThemes = [];
+  if (fs.existsSync(historyFile)) {
+    try { usedThemes = JSON.parse(fs.readFileSync(historyFile, 'utf8')); } catch {}
+  }
+
+  // Pick theme not used in last 30 stories
+  const recentThemes = usedThemes.slice(-30);
+  const availableThemes = THEMES.filter(t => !recentThemes.includes(t));
+  const themePool = availableThemes.length > 0 ? availableThemes : THEMES;
+  const theme = themePool[Math.floor(Math.random() * themePool.length)];
+
+  // Save to history
+  usedThemes.push(theme);
+  fs.writeFileSync(historyFile, JSON.stringify(usedThemes.slice(-100)));
+
+  const prompt = getStoryPrompt(theme);
+
+  // Waterfall: try each provider until one succeeds
+  const providers = [
+    { name: 'Groq', fn: callGroqStory },
+    { name: 'Gemini', fn: callGeminiStory },
+    { name: 'DeepSeek', fn: callDeepSeekStory },
+  ];
+
+  let text = null;
+  let usedProvider = null;
+  for (const { name, fn } of providers) {
+    console.log(`  Trying ${name}...`);
+    text = await fn(prompt);
+    if (text && text.includes('SCENE_START')) {
+      usedProvider = name;
+      break;
+    }
+    text = null;
+  }
+
+  if (!text) throw new Error('All story providers failed. Check API keys.');
+
   fs.writeFileSync(path.join(OUT, 'story.txt'), text);
   const scenes = [];
   for (const block of text.split('SCENE_START').slice(1)) {
     const t = block.match(/TITLE:\s*(.+)/), img = block.match(/IMAGE:\s*([\s\S]+?)(?=NARRATION:)/), n = block.match(/NARRATION:\s*([\s\S]+?)(?=SCENE_END|$)/);
     if (t && img && n) scenes.push({ title: t[1].trim(), image: img[1].trim(), narration: n[1].trim() });
   }
-  console.log(`✅ Story: ${scenes.length} scenes — "${theme}"`);
+  console.log(`✅ Story: ${scenes.length} scenes — "${theme}" (via ${usedProvider})`);
   return { scenes, videoTitle: theme.split(' ').slice(0,8).join(' ') + ' 🌟 Kids Story', theme };
 }
 
@@ -150,48 +238,69 @@ async function generateImages(scenes) {
       continue;
     }
 
-    // Generate new image
-    try {
-      const prompt = 'childrens cartoon illustration, bright vibrant colours, pixar disney style, cute friendly characters, safe for kids, high quality: ' + scenes[i].image.substring(0, 300);
-      const resp = await fetch('https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + process.env.STABILITY_API_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          text_prompts: [
-            { text: prompt, weight: 1 },
-            { text: 'ugly, scary, dark, violent, adult content, blurry', weight: -1 }
-          ],
-          cfg_scale: 7,
-          height: 768,
-          width: 1344,
-          samples: 1,
-          steps: 30,
-        })
-      });
-      const data = await resp.json();
-      if (!data.artifacts || !data.artifacts[0]) throw new Error(JSON.stringify(data).substring(0,200));
-      const imgBuffer = Buffer.from(data.artifacts[0].base64, 'base64');
-      fs.writeFileSync(imgPath, imgBuffer);
-      
-      // Save to cache
-      if (cacheKey) {
-        const cacheFile = path.join(CACHE_DIR, cacheKey + '_' + Date.now() + '.png');
-        fs.writeFileSync(cacheFile, imgBuffer);
+    // Generate new image — waterfall: Stability AI → Pollinations (free) → color fallback
+    const imgPrompt = 'childrens cartoon illustration, bright vibrant colours, pixar disney style, cute friendly characters, safe for kids, high quality: ' + scenes[i].image.substring(0, 300);
+    let imgGenerated = false;
+
+    // Provider 1: Stability AI (paid, best quality)
+    if (!imgGenerated && process.env.STABILITY_API_KEY) {
+      try {
+        const resp = await fetch('https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + process.env.STABILITY_API_KEY,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            text_prompts: [
+              { text: imgPrompt, weight: 1 },
+              { text: 'ugly, scary, dark, violent, adult content, blurry', weight: -1 }
+            ],
+            cfg_scale: 7, height: 768, width: 1344, samples: 1, steps: 30,
+          })
+        });
+        const data = await resp.json();
+        if (!data.artifacts || !data.artifacts[0]) throw new Error(JSON.stringify(data).substring(0, 200));
+        const imgBuffer = Buffer.from(data.artifacts[0].base64, 'base64');
+        fs.writeFileSync(imgPath, imgBuffer);
+        if (cacheKey) fs.writeFileSync(path.join(CACHE_DIR, cacheKey + '_' + Date.now() + '.png'), imgBuffer);
+        imgGenerated = true;
+        newGenerations++;
+        if (i === 0) console.log('\n  Using: Stability AI');
+        await new Promise(r => setTimeout(r, 500));
+      } catch (err) {
+        if (i === 0) console.log('\n  Stability AI failed: ' + err.message.substring(0, 60));
       }
-      
-      newGenerations++;
-      imagePaths.push(imgPath);
-      await new Promise(r => setTimeout(r, 500));
-    } catch(err) {
-      console.warn('\n  Image ' + i + ' failed: ' + err.message.substring(0,100));
+    }
+
+    // Provider 2: Pollinations AI (free, no API key needed)
+    if (!imgGenerated) {
+      try {
+        const encodedPrompt = encodeURIComponent(imgPrompt);
+        const pollUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1344&height=768&nologo=true&model=flux`;
+        const resp = await fetch(pollUrl, { redirect: 'follow' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        if (buffer.length < 5000) throw new Error('Image too small: ' + buffer.length + ' bytes');
+        fs.writeFileSync(imgPath, buffer);
+        if (cacheKey) fs.writeFileSync(path.join(CACHE_DIR, cacheKey + '_' + Date.now() + '.png'), buffer);
+        imgGenerated = true;
+        newGenerations++;
+        if (i === 0) console.log('\n  Using: Pollinations AI (free)');
+        await new Promise(r => setTimeout(r, 1000)); // rate limit
+      } catch (err) {
+        if (i === 0) console.log('\n  Pollinations failed: ' + err.message.substring(0, 60));
+      }
+    }
+
+    // Provider 3: Colored fallback (always works)
+    if (!imgGenerated) {
       const colours = ['4ECDC4','FF6B6B','45B7D1','96CEB4','FFEAA7','DDA0DD','98FB98'];
       spawnSync('ffmpeg',['-y','-f','lavfi','-i','color=c=0x'+colours[i%colours.length]+':size=1344x768','-frames:v','1',imgPath],{stdio:'pipe'});
-      imagePaths.push(imgPath);
     }
+
+    imagePaths.push(imgPath);
   }
   console.log('\n✅ Images done — ' + newGenerations + ' new generated, ' + cacheHits + ' from cache (saved ' + cacheHits + ' credits!)');
   return imagePaths;
