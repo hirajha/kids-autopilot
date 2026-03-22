@@ -493,6 +493,8 @@ async function upload(finalVideo, videoTitle, theme, scenes) {
     '🌙 About Limitless Bedtime Stories:',
     'We create magical, fun and safe bedtime stories for children around the world. Our stories help kids develop imagination, learn new words, and fall asleep peacefully.',
     '',
+    '🤖 AI Disclosure: This video was created using AI tools. The story, images, and voiceover were generated with the assistance of artificial intelligence.',
+    '',
     '─────────────────────────────',
     '#BedtimeStories #KidsStories #StoriesForKids #CartoonForKids #ChildrensStories #FunnyStoriesForKids #KidsCartoon #BedtimeStoriesForToddlers #KidsEntertainment #AnimatedStories #StoryTime #KidsBedtime #ToddlerStories #FairyTales #KidsYouTube',
   ].join('\n');
