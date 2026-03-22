@@ -226,20 +226,62 @@ async function generateVoiceovers(scenes) {
   return audioPaths;
 }
 
-// ─── Step 4: Scene videos with zoom motion ────────────────────────────────────
+// ─── Step 4: Scene videos with Ken Burns motion ───────────────────────────────
 async function buildSceneVideos(scenes, imagePaths, audioPaths) {
-  console.log('Step 4: Building scene videos with motion...');
+  console.log('Step 4: Building scene videos with Ken Burns animation...');
   const scenePaths = [];
+
+  // 6 distinct Ken Burns motion patterns for variety
+  // Each returns { z, x, y } expressions for zoompan filter
+  function getMotion(i, frames) {
+    const pattern = i % 6;
+    switch (pattern) {
+      case 0: // Slow zoom in, centered
+        return {
+          z: `'min(zoom+0.001,1.4)'`,
+          x: `'iw/2-(iw/zoom/2)'`,
+          y: `'ih/2-(ih/zoom/2)'`
+        };
+      case 1: // Zoom out from close-up
+        return {
+          z: `'if(lte(zoom,1.0),1.4,max(zoom-0.001,1.0))'`,
+          x: `'iw/2-(iw/zoom/2)'`,
+          y: `'ih/2-(ih/zoom/2)'`
+        };
+      case 2: // Pan left to right + slight zoom
+        return {
+          z: `'min(zoom+0.0005,1.2)'`,
+          x: `'if(lte(on,1),0,min(on*${(0.2/(frames||1)).toFixed(8)}*iw,iw/5))'`,
+          y: `'ih/2-(ih/zoom/2)'`
+        };
+      case 3: // Pan right to left + slight zoom
+        return {
+          z: `'min(zoom+0.0005,1.2)'`,
+          x: `'if(lte(on,1),iw/5,max(iw/5-on*${(0.2/(frames||1)).toFixed(8)}*iw,0))'`,
+          y: `'ih/2-(ih/zoom/2)'`
+        };
+      case 4: // Zoom in on upper area (sky/top of scene)
+        return {
+          z: `'min(zoom+0.0008,1.35)'`,
+          x: `'iw/2-(iw/zoom/2)'`,
+          y: `'if(lte(on,1),ih/6,ih/6)'`
+        };
+      case 5: // Zoom in on lower area (ground/characters)
+        return {
+          z: `'min(zoom+0.0008,1.35)'`,
+          x: `'iw/2-(iw/zoom/2)'`,
+          y: `'ih/3-(ih/zoom/3)'`
+        };
+    }
+  }
+
   for (let i = 0; i < scenes.length; i++) {
     const scenePath = path.join(OUT, `scene_video_${String(i).padStart(2,'0')}.mp4`);
     const duration = getDuration(audioPaths[i]) + 0.5;
     const frames = Math.round(duration * 25);
     process.stdout.write(`  Scene ${i+1}/${scenes.length}...\r`);
 
-    // Alternate zoom in / zoom out for variety
-    const zoomExpr = i % 2 === 0
-      ? `'min(zoom+0.0008,1.3)'`  // zoom in
-      : `'if(lte(zoom,1.0),1.3,max(zoom-0.0008,1.0))'`; // zoom out
+    const motion = getMotion(i, frames);
 
     const r = spawnSync('ffmpeg', [
       '-y',
@@ -248,7 +290,7 @@ async function buildSceneVideos(scenes, imagePaths, audioPaths) {
       '-t', String(duration),
       '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '320k',
-      '-vf', `scale=1920:1080,zoompan=z=${zoomExpr}:d=${frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=25`,
+      '-vf', `scale=1920:1080,zoompan=z=${motion.z}:d=${frames}:x=${motion.x}:y=${motion.y}:s=1920x1080:fps=25`,
       '-r', '25',
       scenePath
     ], { stdio: 'pipe' });
@@ -259,20 +301,72 @@ async function buildSceneVideos(scenes, imagePaths, audioPaths) {
     }
     scenePaths.push(scenePath);
   }
-  console.log('\n✅ Scene videos done');
+  console.log('\n✅ Scene videos done (Ken Burns animation)');
   return scenePaths;
 }
 
-// ─── Step 5: Add fade transitions between scenes ─────────────────────────────
+// ─── Step 5: Join scenes with crossfade transitions ──────────────────────────
 async function concatenateWithFades(scenePaths) {
-  console.log('Step 5: Joining scenes with fade transitions...');
+  console.log('Step 5: Joining scenes with crossfade transitions...');
 
-  // Simple concat first (fades are complex, this is reliable)
+  const FADE_DURATION = 0.5; // seconds of crossfade between scenes
+
+  // Get duration of each scene video
+  const durations = scenePaths.map(p => getDuration(p));
+
+  // Build xfade filter chain: [0][1]xfade -> [v01], [v01][2]xfade -> [v012], etc.
+  // Also build audio crossfade with acrossfade
+  const inputs = scenePaths.map((p, i) => ['-i', p]).flat();
+  const filterParts = [];
+  const audioFilterParts = [];
+  let prevLabel = '[0:v]';
+  let prevALabel = '[0:a]';
+  let offsetAccum = durations[0] - FADE_DURATION;
+
+  for (let i = 1; i < scenePaths.length; i++) {
+    const outLabel = i < scenePaths.length - 1 ? `[v${i}]` : '[vout]';
+    const outALabel = i < scenePaths.length - 1 ? `[a${i}]` : '[aout]';
+
+    // Alternate between transition effects for variety
+    const effects = ['fade', 'fadeblack', 'slideleft', 'slideup', 'circlecrop', 'dissolve'];
+    const effect = effects[i % effects.length];
+
+    filterParts.push(`${prevLabel}[${i}:v]xfade=transition=${effect}:duration=${FADE_DURATION}:offset=${offsetAccum.toFixed(2)}${outLabel}`);
+    audioFilterParts.push(`${prevALabel}[${i}:a]acrossfade=d=${FADE_DURATION}:c1=tri:c2=tri${outALabel}`);
+
+    prevLabel = outLabel;
+    prevALabel = outALabel;
+    offsetAccum += durations[i] - FADE_DURATION;
+  }
+
+  const rawVideo = path.join(OUT, 'raw.mp4');
+
+  // Try crossfade approach
+  if (scenePaths.length > 1) {
+    const filterComplex = filterParts.join(';') + ';' + audioFilterParts.join(';');
+    const r = spawnSync('ffmpeg', [
+      '-y',
+      ...inputs,
+      '-filter_complex', filterComplex,
+      '-map', '[vout]', '-map', '[aout]',
+      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '320k',
+      '-r', '25',
+      rawVideo
+    ], { stdio: 'pipe', timeout: 600000 });
+
+    if (r.status === 0) {
+      console.log('✅ Scenes joined with crossfade transitions');
+      return rawVideo;
+    }
+    console.log('  Crossfade failed, falling back to simple concat...');
+  }
+
+  // Fallback: simple concat (always works)
   const listFile = path.join(OUT, 'scenes.txt');
   fs.writeFileSync(listFile, scenePaths.map(p => `file '${p}'`).join('\n'));
-  const rawVideo = path.join(OUT, 'raw.mp4');
   execSync(`ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${rawVideo}"`, { stdio: 'pipe' });
-  console.log('✅ Scenes joined');
+  console.log('✅ Scenes joined (simple concat)');
   return rawVideo;
 }
 
